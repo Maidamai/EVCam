@@ -49,6 +49,12 @@
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+    <!-- targetSdk 30+ 包可见性：访问 EVCC 仪表投屏 ContentProvider 需要显式声明。
+         没有这条，副屏选了"EVCC 仪表投屏"时 ContentResolver.query 会拿不到数据。 -->
+    <queries>
+        <provider android:authorities="com.kooo.evcc.displays" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

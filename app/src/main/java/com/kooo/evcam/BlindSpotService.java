@@ -1701,13 +1701,20 @@ public class BlindSpotService extends Service {
             return;
         }
 
-        int desiredDisplayId = appConfig.getSecondaryDisplayId();
-        if (secondaryFloatingView != null && secondaryAttachedDisplayId != -1 && secondaryAttachedDisplayId != desiredDisplayId) {
+        int rawDisplayId = appConfig.getSecondaryDisplayId();
+        int resolvedDisplayId = EvccDashcastDisplayResolver.resolve(this, rawDisplayId);
+        if (resolvedDisplayId < 0) {
+            // EVCC 仪表投屏占位符但 EVCC 没起投屏 — 暂不显示，等 EVCC 起来后下次触发再试
+            if (secondaryFloatingView != null) removeSecondaryView();
+            AppLog.w(TAG, "副屏选了 EVCC 仪表投屏但当前不可用（EVCC 未启动投屏？），跳过");
+            return;
+        }
+        if (secondaryFloatingView != null && secondaryAttachedDisplayId != -1 && secondaryAttachedDisplayId != resolvedDisplayId) {
             removeSecondaryView();
         }
 
         if (secondaryFloatingView == null) {
-            showSecondaryDisplay();
+            showSecondaryDisplay(resolvedDisplayId);
         } else {
             updateSecondaryDisplayLayout();
         }
@@ -1781,10 +1788,20 @@ public class BlindSpotService extends Service {
         }
     }
 
+    /** 无参版本：从配置读取 raw displayId 后做 EVCC 仪表投屏占位符解析。 */
     private void showSecondaryDisplay() {
+        int rawDisplayId = appConfig.getSecondaryDisplayId();
+        int resolved = EvccDashcastDisplayResolver.resolve(this, rawDisplayId);
+        if (resolved < 0) {
+            AppLog.w(TAG, "副屏选了 EVCC 仪表投屏但当前不可用，跳过显示");
+            return;
+        }
+        showSecondaryDisplay(resolved);
+    }
+
+    private void showSecondaryDisplay(int displayId) {
         if (secondaryFloatingView != null) return; // 已经显示了
 
-        int displayId = appConfig.getSecondaryDisplayId();
         Display display = displayManager.getDisplay(displayId);
         if (display == null) {
             AppLog.e(TAG, "找不到指定的副屏 Display ID: " + displayId);

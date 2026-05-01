@@ -43,6 +43,8 @@ public class SecondaryBlindSpotAdjustFragment extends Fragment {
     private AppConfig appConfig;
     private DisplayManager displayManager;
     private final List<Display> availableDisplays = new ArrayList<>();
+    /** 与 availableDisplays 对齐：真实屏幕用 Display.getDisplayId()，EVCC 仪表投屏占位项用 PICK_ID(-100)。 */
+    private final List<Integer> availableDisplayIds = new ArrayList<>();
 
     @Nullable
     @Override
@@ -101,11 +103,18 @@ public class SecondaryBlindSpotAdjustFragment extends Fragment {
     private void updateDisplayList() {
         Display[] displays = displayManager.getDisplays();
         availableDisplays.clear();
+        availableDisplayIds.clear();
         List<String> displayNames = new ArrayList<>();
         for (Display d : displays) {
             availableDisplays.add(d);
+            availableDisplayIds.add(d.getDisplayId());
             displayNames.add("Display " + d.getDisplayId() + (d.getDisplayId() == 0 ? " (主屏)" : ""));
         }
+        // 追加 EVCC 仪表投屏占位项：实际 displayId 在运行时由 EvccDashcastDisplayResolver
+        // 从 EVCC ContentProvider 解析；保存到 SharedPreferences 的就是 PICK_ID(-100)。
+        availableDisplays.add(null);
+        availableDisplayIds.add(EvccDashcastDisplayResolver.PICK_ID);
+        displayNames.add("EVCC 仪表投屏");
         ArrayAdapter<String> displayAdapter = new ArrayAdapter<>(requireContext(), android.R.layout.simple_spinner_item, displayNames);
         displayAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         displaySpinner.setAdapter(displayAdapter);
@@ -113,10 +122,10 @@ public class SecondaryBlindSpotAdjustFragment extends Fragment {
 
     private void loadSettings() {
         int displayId = appConfig.getSecondaryDisplayId();
-        for (int i = 0; i < availableDisplays.size(); i++) {
-            if (availableDisplays.get(i).getDisplayId() == displayId) {
+        for (int i = 0; i < availableDisplayIds.size(); i++) {
+            if (availableDisplayIds.get(i) == displayId) {
                 displaySpinner.setSelection(i);
-                updateDisplayInfo(availableDisplays.get(i));
+                updateDisplayInfoFor(i);
                 break;
             }
         }
@@ -157,14 +166,13 @@ public class SecondaryBlindSpotAdjustFragment extends Fragment {
 
             @Override
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position < 0 || position >= availableDisplays.size()) return;
-                Display selected = availableDisplays.get(position);
-                updateDisplayInfo(selected);
+                if (position < 0 || position >= availableDisplayIds.size()) return;
+                updateDisplayInfoFor(position);
                 if (first) {
                     first = false;
                     return;
                 }
-                appConfig.setSecondaryDisplayId(selected.getDisplayId());
+                appConfig.setSecondaryDisplayId(availableDisplayIds.get(position));
                 BlindSpotService.update(requireContext());
             }
 
@@ -280,6 +288,31 @@ public class SecondaryBlindSpotAdjustFragment extends Fragment {
         });
     }
 
+    private void updateDisplayInfoFor(int position) {
+        if (position < 0 || position >= availableDisplayIds.size()) return;
+        int idAtPos = availableDisplayIds.get(position);
+        Display real = availableDisplays.get(position);
+        if (idAtPos == EvccDashcastDisplayResolver.PICK_ID) {
+            updateEvccPickInfo();
+        } else if (real != null) {
+            updateDisplayInfo(real);
+        }
+    }
+
+    private void updateEvccPickInfo() {
+        EvccDashcastDisplayResolver.Info info = EvccDashcastDisplayResolver.queryPrimary(requireContext());
+        if (info != null) {
+            displayInfoText.setText(String.format("EVCC 仪表投屏当前: id=%d %d x %d", info.displayId, info.widthPx, info.heightPx));
+            // 用真实尺寸限制 SeekBar 上限，保持与普通屏一致的体验
+            seekbarX.setMax(Math.max(info.widthPx, 1));
+            seekbarY.setMax(Math.max(info.heightPx, 1));
+            seekbarWidth.setMax(Math.max(info.widthPx, 1));
+            seekbarHeight.setMax(Math.max(info.heightPx, 1));
+        } else {
+            displayInfoText.setText("EVCC 仪表投屏未启动；副屏将在 EVCC 启动投屏后自动投到该屏");
+        }
+    }
+
     private void persistBoundsAndUpdate() {
         appConfig.setSecondaryDisplayBounds(
                 seekbarX.getProgress(),
@@ -292,8 +325,8 @@ public class SecondaryBlindSpotAdjustFragment extends Fragment {
 
     private void persistAllAndUpdate() {
         int displayPosition = displaySpinner.getSelectedItemPosition();
-        if (displayPosition >= 0 && displayPosition < availableDisplays.size()) {
-            appConfig.setSecondaryDisplayId(availableDisplays.get(displayPosition).getDisplayId());
+        if (displayPosition >= 0 && displayPosition < availableDisplayIds.size()) {
+            appConfig.setSecondaryDisplayId(availableDisplayIds.get(displayPosition));
         }
         persistBoundsAndUpdate();
         appConfig.setSecondaryDisplayRotation(rotationSpinner.getSelectedItemPosition() * 90);
