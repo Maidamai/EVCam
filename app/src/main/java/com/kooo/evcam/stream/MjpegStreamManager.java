@@ -100,7 +100,7 @@ public class MjpegStreamManager {
     private final AppConfig appConfig;
     private final String defaultCameraPosition;  // 配置的默认摄像头（联动空闲时用）
 
-    private MjpegStreamServer server;
+    private volatile FrameStreamServer server;   // 当前使用的传输端（server 或 client）
     private MjpegFrameHolder frameHolder;
     private StreamGlEncoder glEncoder;
     private SingleCamera targetCamera;
@@ -117,6 +117,7 @@ public class MjpegStreamManager {
     private volatile String lastActiveCamera = null;
     private android.os.Handler pollHandler;
     private Runnable linkagePollRunnable;
+    private volatile boolean discoveryRunning = false;
 
     /** 客户端数变化回调（用于 UI 显示 + 决定是否暂停编码）。只在数量变化时触发。 */
     public interface ClientListener {
@@ -139,6 +140,31 @@ public class MjpegStreamManager {
 
     public boolean isRunning() {
         return running.get();
+    }
+
+    /** 按协议创建对应的服务器实例。 */
+    private FrameStreamServer createServer(String proto, int port, MjpegFrameHolder holder) throws IOException {
+        if (proto == null) proto = "HTTP";
+        switch (proto.toUpperCase()) {
+            case "TCP":
+                return new RawTcpStreamServer(port, holder);
+            case "UDP":
+                return new UdpStreamServer(port, holder);
+            case "HTTP":
+            default:
+                return new MjpegStreamServer(port, holder);
+        }
+    }
+
+    private static boolean isClientMode(String mode) {
+        return "CLIENT".equalsIgnoreCase(mode);
+    }
+
+    private static String normalizeProtocolForMode(String proto, String mode) {
+        String p = proto == null ? "HTTP" : proto.trim().toUpperCase();
+        if ("UDP".equals(p)) return "UDP";
+        if ("TCP".equals(p)) return "TCP";
+        return isClientMode(mode) ? "TCP" : "HTTP";
     }
 
     public int getCurrentWidth() { return currentWidth; }
@@ -185,17 +211,48 @@ public class MjpegStreamManager {
         currentWidth = w;
         currentHeight = h;
 
-        // 1. 起帧 holder + HTTP 服务
+        // 1. 起帧 holder + 按模式/协议创建服务器或客户端
         frameHolder = new MjpegFrameHolder();
-        server = new MjpegStreamServer(port, frameHolder);
-        try {
-            server.start();
-        } catch (IOException e) {
-            AppLog.e(TAG, "server start failed on port " + port, e);
-            server = null;
-            return null;
+        String mode = appConfig.getMjpegStreamMode();
+        String proto = normalizeProtocolForMode(appConfig.getMjpegStreamProtocol(), mode);
+
+        if (isClientMode(mode)) {
+            // 客户端推流模式：主动连接 ESP32
+            String clientHost = appConfig.getMjpegStreamClientHost().trim();
+            int clientPort = appConfig.getMjpegStreamClientPort();
+            if (clientHost.isEmpty()) {
+                if (appConfig.isMjpegStreamAutoDiscover()) {
+                    // 自动发现 ESP32，找到后再连接
+                    AppLog.i(TAG, "client mode: no host, starting auto-discovery...");
+                    startWithDiscovery(proto);
+                } else {
+                    AppLog.e(TAG, "client mode: no host configured and auto-discover disabled");
+                    return null;
+                }
+            } else if (!startClientTransport(clientHost, clientPort, proto)) {
+                return null;
+            }
+        } else {
+            // 服务器模式：监听端口等连接
+            try {
+                server = createServer(proto, port, frameHolder);
+            } catch (IOException e) {
+                AppLog.e(TAG, "server create failed on port " + port + " proto=" + proto, e);
+                server = null;
+                return null;
+            }
         }
-        AppLog.i(TAG, "MJPEG server started on port " + port);
+
+        if (!isClientMode(mode) && server != null) {
+            try {
+                server.startServer();
+            } catch (IOException e) {
+                AppLog.e(TAG, "server start failed: " + e.getMessage(), e);
+                server = null;
+                return null;
+            }
+        }
+        AppLog.i(TAG, "Stream started: mode=" + mode + " proto=" + proto);
 
         // 2. 起 GL 编码器
         glEncoder = new StreamGlEncoder(currentCameraPosition, w, h, this::onRgbaFrame);
@@ -229,6 +286,67 @@ public class MjpegStreamManager {
         AppLog.i(TAG, "MJPEG stream started: " + w + "x" + h + " camera=" + currentCameraPosition
                 + " linkage=" + linkageMode);
         return getAccessUrl();
+    }
+
+    private boolean startClientTransport(String host, int port, String proto) {
+        String clientProto = normalizeProtocolForMode(proto, "CLIENT");
+        FrameStreamServer client = new StreamClient(host, port, clientProto, frameHolder);
+        synchronized (this) {
+            if (server != null) {
+                server.stopServer();
+            }
+            server = client;
+            lastClientCount = -1;
+        }
+        try {
+            client.startServer();
+            AppLog.i(TAG, "client transport started: " + clientProto + " " + host + ":" + port);
+            return true;
+        } catch (IOException e) {
+            AppLog.e(TAG, "client transport start failed: " + e.getMessage(), e);
+            synchronized (this) {
+                if (server == client) server = null;
+            }
+            return false;
+        }
+    }
+
+    private void startWithDiscovery(String fallbackProto) {
+        if (discoveryRunning) return;
+        discoveryRunning = true;
+        Esp32Discovery.discover(4000, new Esp32Discovery.DiscoveryCallback() {
+            @Override
+            public void onFound(String host, int port, String proto, int width, int height) {
+                discoveryRunning = false;
+                if (frameHolder == null) return;
+                String clientProto = normalizeProtocolForMode(
+                        proto == null || proto.trim().isEmpty() ? fallbackProto : proto, "CLIENT");
+                appConfig.setMjpegStreamClientHost(host);
+                appConfig.setMjpegStreamClientPort(port);
+                appConfig.setMjpegStreamProtocol(clientProto);
+                if (width >= 80 && height >= 80) {
+                    appConfig.setMjpegStreamWidth(width);
+                    appConfig.setMjpegStreamHeight(height);
+                    applyParams();
+                }
+                AppLog.i(TAG, "discovery found ESP32, connecting " + clientProto
+                        + " " + host + ":" + port);
+                startClientTransport(host, port, clientProto);
+            }
+
+            @Override
+            public void onTimeout() {
+                discoveryRunning = false;
+                AppLog.w(TAG, "ESP32 discovery timeout");
+                if (running.get() && frameHolder != null && appConfig.isMjpegStreamAutoDiscover()
+                        && appConfig.getMjpegStreamClientHost().trim().isEmpty()) {
+                    android.os.Handler h = pollHandler != null
+                            ? pollHandler
+                            : new android.os.Handler(android.os.Looper.getMainLooper());
+                    h.postDelayed(() -> startWithDiscovery(fallbackProto), 5000);
+                }
+            }
+        });
     }
 
     private final Runnable pollRunnable = new Runnable() {
@@ -364,6 +482,7 @@ public class MjpegStreamManager {
             pollHandler.removeCallbacks(pollRunnable);
             pollHandler = null;
         }
+        discoveryRunning = false;
 
         if (targetCamera != null) {
             targetCamera.setStreamSurface(null, null);
@@ -383,8 +502,7 @@ public class MjpegStreamManager {
         }
 
         if (server != null) {
-            server.shutdown();
-            try { server.stop(); } catch (Exception ignored) {}
+            server.stopServer();
             server = null;
         }
 
@@ -398,8 +516,23 @@ public class MjpegStreamManager {
     }
 
     public String getAccessUrl() {
+        String mode = appConfig.getMjpegStreamMode();
+        String proto = appConfig.getMjpegStreamProtocol();
+        if (isClientMode(mode)) {
+            String host = appConfig.getMjpegStreamClientHost().trim();
+            if (host.isEmpty()) {
+                return discoveryRunning ? "discover://:8444" : "client://not-configured";
+            }
+            String clientProto = normalizeProtocolForMode(proto, "CLIENT").toLowerCase();
+            return clientProto + "://" + host + ":" + appConfig.getMjpegStreamClientPort();
+        }
         if (server == null) return null;
-        return "http://" + MjpegStreamServer.getLocalIp() + ":" + appConfig.getMjpegStreamPort() + "/stream";
+        int port = appConfig.getMjpegStreamPort();
+        if ("HTTP".equalsIgnoreCase(proto)) {
+            return "http://" + MjpegStreamServer.getLocalIp() + ":" + port + "/stream";
+        }
+        // TCP / UDP：返回 proto://port 形式（UI 只显示端口）
+        return proto.toLowerCase() + "://:" + port;
     }
 }
 

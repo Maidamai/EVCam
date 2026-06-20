@@ -94,7 +94,7 @@ public class AppConfig {
     // MJPEG 流配置（独立 GL 管线推流，鱼眼参数复用副屏现有项）
     private static final String KEY_MJPEG_STREAM_ENABLED = "mjpeg_stream_enabled";            // 总开关
     private static final String KEY_MJPEG_STREAM_CAMERA = "mjpeg_stream_camera";              // 推流摄像头位置 front/back/left/right
-    private static final String KEY_MJPEG_STREAM_PORT = "mjpeg_stream_port";                  // HTTP 端口
+    private static final String KEY_MJPEG_STREAM_PORT = "mjpeg_stream_port";                  // 服务端监听端口
     private static final String KEY_MJPEG_STREAM_WIDTH = "mjpeg_stream_width";                // 输出宽度
     private static final String KEY_MJPEG_STREAM_HEIGHT = "mjpeg_stream_height";              // 输出高度
     private static final String KEY_MJPEG_STREAM_QUALITY = "mjpeg_stream_quality";            // JPEG 质量 1-95
@@ -102,6 +102,11 @@ public class AppConfig {
     private static final String KEY_MJPEG_STREAM_PAN_Y = "mjpeg_stream_pan_y";                // 位置偏移 Y [0,1]
     private static final String KEY_MJPEG_STREAM_COVER_SCALE = "mjpeg_stream_cover_scale";    // 覆盖缩放倍数 ≥1.0
     private static final String KEY_MJPEG_STREAM_LINKAGE_MODE = "mjpeg_stream_linkage_mode";  // 联动补盲模式（跟随转向灯/车门切换摄像头）
+    private static final String KEY_MJPEG_STREAM_PROTOCOL = "mjpeg_stream_protocol";          // 传输协议：HTTP/TCP/UDP
+    private static final String KEY_MJPEG_STREAM_MODE = "mjpeg_stream_mode";                  // 模式：SERVER/CLIENT
+    private static final String KEY_MJPEG_STREAM_CLIENT_HOST = "mjpeg_stream_client_host";    // 客户端模式：ESP32 IP
+    private static final String KEY_MJPEG_STREAM_CLIENT_PORT = "mjpeg_stream_client_port";    // 客户端模式：ESP32 端口
+    private static final String KEY_MJPEG_STREAM_AUTO_DISCOVER = "mjpeg_stream_auto_discover"; // 客户端模式：自动发现
 
     // 转向灯联动配置 (补盲选项新增)
     private static final String KEY_TURN_SIGNAL_LINKAGE_ENABLED = "turn_signal_linkage_enabled"; // 转向灯联动开关
@@ -3713,5 +3718,61 @@ public class AppConfig {
     public void setMjpegStreamLinkageMode(boolean enabled) {
         prefs.edit().putBoolean(KEY_MJPEG_STREAM_LINKAGE_MODE, enabled).apply();
         AppLog.d(TAG, "MJPEG流联动模式: " + enabled);
+    }
+
+    /** 传输协议：HTTP（MJPEG over HTTP）/ TCP（裸 TCP）/ UDP（分片）。 */
+    public String getMjpegStreamProtocol() {
+        String proto = prefs.getString(KEY_MJPEG_STREAM_PROTOCOL, "HTTP");
+        if ("TCP".equalsIgnoreCase(proto)) return "TCP";
+        if ("UDP".equalsIgnoreCase(proto)) return "UDP";
+        return "HTTP";
+    }
+
+    public void setMjpegStreamProtocol(String proto) {
+        String normalized;
+        if ("TCP".equalsIgnoreCase(proto)) normalized = "TCP";
+        else if ("UDP".equalsIgnoreCase(proto)) normalized = "UDP";
+        else normalized = "HTTP";
+        prefs.edit().putString(KEY_MJPEG_STREAM_PROTOCOL, normalized).apply();
+        AppLog.d(TAG, "MJPEG流协议: " + normalized);
+    }
+
+    // ==================== 客户端推流模式配置 ====================
+
+    /** 流模式：SERVER（服务器，监听端口等连接）或 CLIENT（客户端，主动连 ESP32）。 */
+    public String getMjpegStreamMode() {
+        String mode = prefs.getString(KEY_MJPEG_STREAM_MODE, "SERVER");
+        return "CLIENT".equalsIgnoreCase(mode) ? "CLIENT" : "SERVER";
+    }
+
+    public void setMjpegStreamMode(String mode) {
+        String normalized = "CLIENT".equalsIgnoreCase(mode) ? "CLIENT" : "SERVER";
+        prefs.edit().putString(KEY_MJPEG_STREAM_MODE, normalized).apply();
+        AppLog.d(TAG, "MJPEG流模式: " + normalized);
+    }
+
+    public String getMjpegStreamClientHost() {
+        return prefs.getString(KEY_MJPEG_STREAM_CLIENT_HOST, "");
+    }
+
+    public void setMjpegStreamClientHost(String host) {
+        prefs.edit().putString(KEY_MJPEG_STREAM_CLIENT_HOST,
+                host != null ? host.trim() : "").apply();
+    }
+
+    public int getMjpegStreamClientPort() {
+        return prefs.getInt(KEY_MJPEG_STREAM_CLIENT_PORT, 8080);
+    }
+
+    public void setMjpegStreamClientPort(int port) {
+        prefs.edit().putInt(KEY_MJPEG_STREAM_CLIENT_PORT, Math.max(1, Math.min(65535, port))).apply();
+    }
+
+    public boolean isMjpegStreamAutoDiscover() {
+        return prefs.getBoolean(KEY_MJPEG_STREAM_AUTO_DISCOVER, true);
+    }
+
+    public void setMjpegStreamAutoDiscover(boolean enabled) {
+        prefs.edit().putBoolean(KEY_MJPEG_STREAM_AUTO_DISCOVER, enabled).apply();
     }
 }

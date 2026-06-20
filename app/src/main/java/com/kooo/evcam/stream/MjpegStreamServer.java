@@ -33,7 +33,7 @@ import fi.iki.elonen.NanoHTTPD;
  * 实现用 PipedInputStream/PipedOutputStream 桥接：推流线程往 PipedOutputStream 写，
  * NanoHTTPD 从 PipedInputStream 读并转发到 socket。
  */
-public class MjpegStreamServer extends NanoHTTPD {
+public class MjpegStreamServer extends NanoHTTPD implements FrameStreamServer {
     private static final String TAG = "MjpegStreamServer";
     private static final String BOUNDARY = "frame";
     private static final String CONTENT_TYPE_STREAM =
@@ -172,6 +172,19 @@ public class MjpegStreamServer extends NanoHTTPD {
         }
         streamThreads.clear();
         clientCount.set(0);
+    }
+
+    // ===== FrameStreamServer 接口实现 =====
+
+    @Override
+    public void startServer() throws IOException {
+        super.start();
+    }
+
+    @Override
+    public void stopServer() {
+        shutdown();
+        try { super.stop(); } catch (Exception ignored) {}
     }
 
     /** 获取本机 IPv4 地址，用于 UI 显示访问 URL。 */
