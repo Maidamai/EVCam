@@ -91,6 +91,18 @@ public class AppConfig {
     private static final String KEY_MAIN_FLOATING_WIDTH = "main_floating_width";              // 主屏悬浮窗宽度
     private static final String KEY_MAIN_FLOATING_HEIGHT = "main_floating_height";            // 主屏悬浮窗高度
 
+    // MJPEG 流配置（独立 GL 管线推流，鱼眼参数复用副屏现有项）
+    private static final String KEY_MJPEG_STREAM_ENABLED = "mjpeg_stream_enabled";            // 总开关
+    private static final String KEY_MJPEG_STREAM_CAMERA = "mjpeg_stream_camera";              // 推流摄像头位置 front/back/left/right
+    private static final String KEY_MJPEG_STREAM_PORT = "mjpeg_stream_port";                  // HTTP 端口
+    private static final String KEY_MJPEG_STREAM_WIDTH = "mjpeg_stream_width";                // 输出宽度
+    private static final String KEY_MJPEG_STREAM_HEIGHT = "mjpeg_stream_height";              // 输出高度
+    private static final String KEY_MJPEG_STREAM_QUALITY = "mjpeg_stream_quality";            // JPEG 质量 1-95
+    private static final String KEY_MJPEG_STREAM_PAN_X = "mjpeg_stream_pan_x";                // 位置偏移 X [0,1]
+    private static final String KEY_MJPEG_STREAM_PAN_Y = "mjpeg_stream_pan_y";                // 位置偏移 Y [0,1]
+    private static final String KEY_MJPEG_STREAM_COVER_SCALE = "mjpeg_stream_cover_scale";    // 覆盖缩放倍数 ≥1.0
+    private static final String KEY_MJPEG_STREAM_LINKAGE_MODE = "mjpeg_stream_linkage_mode";  // 联动补盲模式（跟随转向灯/车门切换摄像头）
+
     // 转向灯联动配置 (补盲选项新增)
     private static final String KEY_TURN_SIGNAL_LINKAGE_ENABLED = "turn_signal_linkage_enabled"; // 转向灯联动开关
     private static final String KEY_TURN_SIGNAL_TIMEOUT = "turn_signal_timeout";               // 转向灯熄灭后延迟消失时间 (秒)
@@ -3615,5 +3627,91 @@ public class AppConfig {
     public void setRecordingFloatingTimeTextSizeSp(int sizeSp) {
         prefs.edit().putInt(KEY_RECORDING_FLOATING_TIME_TEXT_SIZE, sizeSp).apply();
         AppLog.d(TAG, "录制悬浮按钮时间文字大小设置: " + sizeSp + "sp");
+    }
+
+    // ==================== MJPEG 流配置 ====================
+    // 默认值：820×320 横屏 / 端口 8080 / 质量 30 / pan 居中 / cover 1.0
+    // 鱼眼参数复用 getFisheyeCorrection*(cameraPos) 系列方法，按摄像头位置取值。
+
+    public boolean isMjpegStreamEnabled() {
+        return prefs.getBoolean(KEY_MJPEG_STREAM_ENABLED, false);
+    }
+
+    public void setMjpegStreamEnabled(boolean enabled) {
+        prefs.edit().putBoolean(KEY_MJPEG_STREAM_ENABLED, enabled).apply();
+        AppLog.d(TAG, "MJPEG流总开关: " + enabled);
+    }
+
+    public String getMjpegStreamCamera() {
+        return prefs.getString(KEY_MJPEG_STREAM_CAMERA, "left");
+    }
+
+    public void setMjpegStreamCamera(String position) {
+        prefs.edit().putString(KEY_MJPEG_STREAM_CAMERA, position).apply();
+    }
+
+    public int getMjpegStreamPort() {
+        return prefs.getInt(KEY_MJPEG_STREAM_PORT, 29543);
+    }
+
+    public void setMjpegStreamPort(int port) {
+        prefs.edit().putInt(KEY_MJPEG_STREAM_PORT, Math.max(1024, Math.min(65535, port))).apply();
+    }
+
+    public int getMjpegStreamWidth() {
+        return prefs.getInt(KEY_MJPEG_STREAM_WIDTH, 820);
+    }
+
+    public void setMjpegStreamWidth(int w) {
+        prefs.edit().putInt(KEY_MJPEG_STREAM_WIDTH, Math.max(80, Math.min(1920, w))).apply();
+    }
+
+    public int getMjpegStreamHeight() {
+        return prefs.getInt(KEY_MJPEG_STREAM_HEIGHT, 320);
+    }
+
+    public void setMjpegStreamHeight(int h) {
+        prefs.edit().putInt(KEY_MJPEG_STREAM_HEIGHT, Math.max(80, Math.min(1920, h))).apply();
+    }
+
+    public int getMjpegStreamQuality() {
+        return prefs.getInt(KEY_MJPEG_STREAM_QUALITY, 30);
+    }
+
+    public void setMjpegStreamQuality(int q) {
+        prefs.edit().putInt(KEY_MJPEG_STREAM_QUALITY, Math.max(1, Math.min(95, q))).apply();
+    }
+
+    public float getMjpegStreamPanX() {
+        return prefs.getFloat(KEY_MJPEG_STREAM_PAN_X, 0.5f);
+    }
+
+    public void setMjpegStreamPanX(float v) {
+        prefs.edit().putFloat(KEY_MJPEG_STREAM_PAN_X, Math.max(0f, Math.min(1f, v))).apply();
+    }
+
+    public float getMjpegStreamPanY() {
+        return prefs.getFloat(KEY_MJPEG_STREAM_PAN_Y, 0.5f);
+    }
+
+    public void setMjpegStreamPanY(float v) {
+        prefs.edit().putFloat(KEY_MJPEG_STREAM_PAN_Y, Math.max(0f, Math.min(1f, v))).apply();
+    }
+
+    public float getMjpegStreamCoverScale() {
+        return prefs.getFloat(KEY_MJPEG_STREAM_COVER_SCALE, 1.0f);
+    }
+
+    public void setMjpegStreamCoverScale(float s) {
+        prefs.edit().putFloat(KEY_MJPEG_STREAM_COVER_SCALE, Math.max(1.0f, Math.min(4.0f, s))).apply();
+    }
+
+    public boolean isMjpegStreamLinkageMode() {
+        return prefs.getBoolean(KEY_MJPEG_STREAM_LINKAGE_MODE, false);
+    }
+
+    public void setMjpegStreamLinkageMode(boolean enabled) {
+        prefs.edit().putBoolean(KEY_MJPEG_STREAM_LINKAGE_MODE, enabled).apply();
+        AppLog.d(TAG, "MJPEG流联动模式: " + enabled);
     }
 }

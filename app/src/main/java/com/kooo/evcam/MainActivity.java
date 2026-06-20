@@ -2784,6 +2784,9 @@ public class MainActivity extends AppCompatActivity {
                 // 启动自动录制定时检查（如果启用了自动录制）
                 startAutoRecordingCheck();
 
+                // 自动拉起 MJPEG 流（若配置已开启）——联动模式下无补盲信号时不占相机
+                com.kooo.evcam.stream.MjpegStreamManager.ensureRunning(this);
+
             } catch (CameraAccessException e) {
                 AppLog.e(TAG, "Failed to access camera", e);
                 Toast.makeText(this, "摄像头访问失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();

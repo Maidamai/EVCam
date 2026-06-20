@@ -111,6 +111,19 @@ public class BlindSpotService extends Service {
     }
 
     /**
+     * 获取当前补盲活跃的摄像头位置（供 MJPEG 流等外部消费者轮询）。
+     * 优先级：转向灯信号 > 预览信号 > null（无补盲活跃）。
+     * 注意：long_view / 车门补盲等特殊标记也会返回，调用方需自行判断有效性。
+     */
+    public static String getActiveBlindSpotCamera() {
+        BlindSpotService inst = sInstance;
+        if (inst == null) return null;
+        if (inst.currentSignalCamera != null) return inst.currentSignalCamera;
+        if (inst.previewCameraPos != null) return inst.previewCameraPos;
+        return null;
+    }
+
+    /**
      * 检查是否有活跃的摄像头悬浮窗（补盲悬浮窗、常驻悬浮窗、副屏、超视模式、长视模式）正在使用摄像头。
      * 用于 MainActivity.onPause() 判断是否应该保持摄像头连接。
      */

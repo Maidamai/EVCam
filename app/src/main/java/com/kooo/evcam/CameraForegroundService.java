@@ -254,6 +254,11 @@ public class CameraForegroundService extends Service {
             if (appConfig.isAutoStartRecording() && MainActivity.getInstance() == null) {
                 startMainActivityForAutoRecording();
             }
+
+            // 自恢复 MJPEG 流（若配置已开启但未运行）
+            if (appConfig.isMjpegStreamEnabled()) {
+                com.kooo.evcam.stream.MjpegStreamManager.ensureRunning(this);
+            }
         } catch (Exception e) {
             AppLog.e(TAG, "确保服务启动失败: " + e.getMessage(), e);
         }

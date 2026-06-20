@@ -67,6 +67,7 @@ public class BlindSpotSettingsFragment extends Fragment {
     private android.widget.LinearLayout subFeaturesContainer;
     private SwitchMaterial secondaryBlindSpotSwitch;
     private Button adjustSecondaryBlindSpotWindowButton;
+    private Button adjustMjpegStreamButton;
     private SwitchMaterial mockFloatingSwitch;
     private SwitchMaterial floatingWindowAnimationSwitch;
     private RadioGroup statusBarStyleGroup;
@@ -122,6 +123,7 @@ public class BlindSpotSettingsFragment extends Fragment {
 
         secondaryBlindSpotSwitch = view.findViewById(R.id.switch_secondary_blind_spot_display);
         adjustSecondaryBlindSpotWindowButton = view.findViewById(R.id.btn_adjust_secondary_blind_spot_window);
+        adjustMjpegStreamButton = view.findViewById(R.id.btn_adjust_mjpeg_stream);
         
         // 车门联动UI初始化
         doorLinkageSectionLayout = view.findViewById(R.id.ll_door_linkage_section);
@@ -573,6 +575,14 @@ public class BlindSpotSettingsFragment extends Fragment {
             if (getActivity() == null) return;
             androidx.fragment.app.FragmentTransaction transaction = getActivity().getSupportFragmentManager().beginTransaction();
             transaction.replace(R.id.fragment_container, new SecondaryBlindSpotAdjustFragment());
+            transaction.addToBackStack(null);
+            transaction.commit();
+        });
+
+        adjustMjpegStreamButton.setOnClickListener(v -> {
+            if (getActivity() == null) return;
+            androidx.fragment.app.FragmentTransaction transaction = getActivity().getSupportFragmentManager().beginTransaction();
+            transaction.replace(R.id.fragment_container, new MjpegStreamAdjustFragment());
             transaction.addToBackStack(null);
             transaction.commit();
         });
