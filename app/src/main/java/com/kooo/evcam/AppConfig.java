@@ -102,7 +102,7 @@ public class AppConfig {
     private static final String KEY_MJPEG_STREAM_PAN_Y = "mjpeg_stream_pan_y";                // 位置偏移 Y [0,1]
     private static final String KEY_MJPEG_STREAM_COVER_SCALE = "mjpeg_stream_cover_scale";    // 覆盖缩放倍数 ≥1.0
     private static final String KEY_MJPEG_STREAM_LINKAGE_MODE = "mjpeg_stream_linkage_mode";  // 联动补盲模式（跟随转向灯/车门切换摄像头）
-    private static final String KEY_MJPEG_STREAM_PROTOCOL = "mjpeg_stream_protocol";          // 传输协议：HTTP/TCP/UDP
+    private static final String KEY_MJPEG_STREAM_PROTOCOL = "mjpeg_stream_protocol";          // 传输协议：HTTP/TCP/UDP/RTP
     private static final String KEY_MJPEG_STREAM_MODE = "mjpeg_stream_mode";                  // 模式：SERVER/CLIENT
     private static final String KEY_MJPEG_STREAM_CLIENT_HOST = "mjpeg_stream_client_host";    // 客户端模式：ESP32 IP
     private static final String KEY_MJPEG_STREAM_CLIENT_PORT = "mjpeg_stream_client_port";    // 客户端模式：ESP32 端口
@@ -3720,11 +3720,12 @@ public class AppConfig {
         AppLog.d(TAG, "MJPEG流联动模式: " + enabled);
     }
 
-    /** 传输协议：HTTP（MJPEG over HTTP）/ TCP（裸 TCP）/ UDP（分片）。 */
+    /** 传输协议：HTTP（MJPEG over HTTP）/ TCP（裸 TCP）/ UDP（分片）/ RTP（RTP/JPEG）。 */
     public String getMjpegStreamProtocol() {
         String proto = prefs.getString(KEY_MJPEG_STREAM_PROTOCOL, "HTTP");
         if ("TCP".equalsIgnoreCase(proto)) return "TCP";
         if ("UDP".equalsIgnoreCase(proto)) return "UDP";
+        if ("RTP".equalsIgnoreCase(proto)) return "RTP";
         return "HTTP";
     }
 
@@ -3732,6 +3733,7 @@ public class AppConfig {
         String normalized;
         if ("TCP".equalsIgnoreCase(proto)) normalized = "TCP";
         else if ("UDP".equalsIgnoreCase(proto)) normalized = "UDP";
+        else if ("RTP".equalsIgnoreCase(proto)) normalized = "RTP";
         else normalized = "HTTP";
         prefs.edit().putString(KEY_MJPEG_STREAM_PROTOCOL, normalized).apply();
         AppLog.d(TAG, "MJPEG流协议: " + normalized);
